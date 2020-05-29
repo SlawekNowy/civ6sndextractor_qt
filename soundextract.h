@@ -1,13 +1,13 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QMainWindow>
-
-
-
-
+#include <QVector>
+#include <QBuffer>
 #include <QFileDialog>
+#include <QtDebug>
+
 #include <QStandardPaths>
+#include <QProgressDialog>
 #include <QErrorMessage>
 #include <string>
 #include <vector>
@@ -15,6 +15,12 @@
 #include <cstdio>
 #include "tinyxml2.h"
 #include "wwriff.h"
+#include <QMainWindow>
+
+
+
+
+
 
 typedef uint32_t UInt32;
 typedef uint16_t UInt16;
@@ -35,6 +41,7 @@ struct Sound
     std::string id;
     std::string name;
     std::string relativePath;
+    std::string bankPath;
     bool streamed;
 };
 
@@ -67,6 +74,16 @@ struct ChunkHeader
 {
     Fourcc ChunkId;
     UInt32 dwChunkSize;
+    friend inline QDataStream &operator>>(QDataStream& in,ChunkHeader& item) {
+        in >> item.ChunkId;
+        in >> item.dwChunkSize;
+        return in;
+    }
+    friend inline QDataStream &operator<<(QDataStream& out, ChunkHeader& item) {
+        out << item.ChunkId;
+        out << item.dwChunkSize;
+        return out;
+    }
 };
 struct WaveFormatEx
 {
@@ -77,12 +94,48 @@ struct WaveFormatEx
     UInt16 nBlockAlign;
     UInt16 wBitsPerSample;
     UInt16 cbSize;
+
+    friend inline QDataStream &operator>>(QDataStream& in,WaveFormatEx& item) {
+        in >> item.wFormatTag;
+        in >> item.nChannels;
+        in >> item.nSamplesPerSec;
+        in >> item.nAvgBytesPerSec;
+        in >> item.nBlockAlign;
+        in >> item.wBitsPerSample;
+        in >> item.cbSize;
+        return in;
+
+    }
+    friend inline QDataStream &operator<<(QDataStream& out,WaveFormatEx& item) {
+        out << item.wFormatTag;
+        out << item.nChannels;
+        out << item.nSamplesPerSec;
+        out << item.nAvgBytesPerSec;
+        out << item.nBlockAlign;
+        out << item.wBitsPerSample;
+        out << item.cbSize;
+        return out;
+
+    }
 };
 
 struct WaveFormatExtensible : public WaveFormatEx
 {
     UInt16 wSamplesPerBlock;
     UInt32 dwChannelMask;
+
+    friend inline QDataStream &operator>>(QDataStream& in,WaveFormatExtensible& item) {
+        in >> (WaveFormatEx &)item;
+        in >> item.wSamplesPerBlock;
+        in >> item.dwChannelMask;
+        return in;
+    }
+    friend inline QDataStream &operator<<(QDataStream& out,WaveFormatExtensible& item) {
+        out << (WaveFormatEx &)item;
+        out << item.wSamplesPerBlock;
+        out << item.dwChannelMask;
+        return out;
+    }
 };
 
 struct VorbisHeaderBase
@@ -115,6 +168,14 @@ struct VorbisHeader : public VorbisHeaderBase, public VorbisInfo
 };
 #pragma pack(pop)
 
+//Implementation of struct deserialization code
+
+
+
+
+
+
+
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -134,7 +195,7 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    std::vector<Sound> savedSounds;
+    QVector<Sound> savedSounds;
 
 };
 #endif // MAINWINDOW_H
