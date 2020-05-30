@@ -22,10 +22,8 @@
 #include <string>
 #include <cstring>
 #include <cstdlib>
-extern "C" {
 #include <ogg/ogg.h>
 #include <vorbis/codec.h>
-}
 
 bool g_failed;
 

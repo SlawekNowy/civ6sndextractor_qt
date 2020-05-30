@@ -5,6 +5,9 @@
 #include <QBuffer>
 #include <QFileDialog>
 #include <QtDebug>
+#ifndef _WIN32
+    #include <unistd.h>
+#endif
 
 #include <QStandardPaths>
 #include <QProgressDialog>
@@ -21,7 +24,8 @@
 
 
 
-
+typedef uint8_t UInt8;
+typedef uint16_t UInt16;
 typedef uint32_t UInt32;
 typedef uint16_t UInt16;
 typedef UInt32 MediaID;
@@ -161,7 +165,7 @@ struct VorbisInfo
     UInt32 dwDecodeAllocSize;
     UInt32 dwDecodeX64AllocSize;
     UInt32 uHashCodebook;
-    unsigned __int8 uBlockSizes[2];
+    UInt8 uBlockSizes[2];
 };
 struct VorbisHeader : public VorbisHeaderBase, public VorbisInfo
 {

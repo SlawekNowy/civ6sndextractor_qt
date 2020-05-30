@@ -242,6 +242,7 @@ void MainWindow::on_extractButton_clicked()
     for (auto iterator = sounds.begin();iterator !=sounds.end();iterator++) {
         Sound sound = *iterator;
         QBuffer data;
+        data.open(QIODevice::ReadWrite);
         if (sound.streamed) {
             //the file is streamed. Search for coresponding wem file and copy it to memory.
             QFile file(QString::fromStdString(path)+"/"+QString::fromStdString(sound.id)+".wem");
@@ -460,12 +461,17 @@ void MainWindow::on_extractButton_clicked()
                 ofstream out(outFile.fileName().toStdString(), ios::binary);
                 ww.generate_ogg(out);
             }
-            _unlink(fn);
+            #ifdef _WIN32
+                _unlink(fn);
+            #else 
+                unlink(fn);
+            #endif
             revorb(outFile.fileName().toStdString().c_str());
             return;
         }
 
 
+        data.close();
         outFile.close();
 
 
