@@ -31,8 +31,6 @@ HEADERS += \
     errors.h \
     ogg/ogg.h \
     ogg/os_types.h \
-    resource.h \
-    soundextract.aps \
     soundextract.h \
     tinyxml2.h \
     vorbis/codec.h \
@@ -41,8 +39,6 @@ HEADERS += \
 FORMS += \
     soundextract.ui
 
-TRANSLATIONS += \
-    civ6sndextractor_qt_en_US.ts
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -52,21 +48,22 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 DISTFILES += \
     .gitignore \
     COPYING \
-    libogg_static.lib \
-    libvorbis_static.lib
 
-win32: LIBS += -L$$PWD/./ -llibogg_static
+
+
+
+win32: LIBS += -L$$PWD/lib/ -logg
 
 INCLUDEPATH += $$PWD/ogg
 DEPENDPATH += $$PWD/ogg
 
-win32:!win32-g++: PRE_TARGETDEPS += $$PWD/./libogg_static.lib
-else:win32-g++: PRE_TARGETDEPS += $$PWD/./liblibogg_static.a
+win32:!win32-g++: PRE_TARGETDEPS += $$PWD/lib/ogg.lib
+else:win32-g++: PRE_TARGETDEPS += $$PWD/lib/libogg.a
 
-win32: LIBS += -L$$PWD/./ -llibvorbis_static
+win32: LIBS += -L$$PWD/lib/ -lvorbis
 
 INCLUDEPATH += $$PWD/vorbis
 DEPENDPATH += $$PWD/vorbis
 
-win32:!win32-g++: PRE_TARGETDEPS += $$PWD/./libvorbis_static.lib
-else:win32-g++: PRE_TARGETDEPS += $$PWD/./liblibvorbis_static.a
+win32:!win32-g++: PRE_TARGETDEPS += $$PWD/lib/vorbis.lib
+else:win32-g++: PRE_TARGETDEPS += $$PWD/lib/libvorbis.a
