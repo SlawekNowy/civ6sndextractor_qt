@@ -1,6 +1,0 @@
-[submodule "ogg"]
-	path = ogg
-	url = https://github.com/xiph/ogg
-[submodule "vorbis"]
-	path = vorbis
-	url = https://github.com/xiph/vorbis
