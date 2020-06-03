@@ -5,6 +5,7 @@
 #include <QBuffer>
 #include <QFileDialog>
 #include <QtDebug>
+//#include <QSaveFile>
 #ifndef _WIN32
     #include <unistd.h>
 #endif

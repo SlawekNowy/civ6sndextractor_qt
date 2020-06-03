@@ -211,273 +211,273 @@ void MainWindow::on_openButton_clicked()
 void MainWindow::on_extractButton_clicked()
 {
 
+    //HWND list = GetDlgItem(hwnd, IDC_SOUNDS); //get element from GUI
+    //int item = ListView_GetNextItem(list, -1, LVNI_SELECTED);
     QStringList filesToExport;
-    if (ui->soundWavesOpened->selectedItems().size()!=0) {
-        sounds.reserve(ui->soundWavesOpened->selectedItems().size());
-        for (auto element:ui->soundWavesOpened->selectedItems()) {
-            filesToExport.append(element->text());
-            QVector<Sound>::iterator it = std::find_if(savedSounds.begin(),savedSounds.end(),[element] (Sound val) {
-                return val.name == element->text().toStdString();
-            });
-            Q_ASSERT(it!=savedSounds.end()); //std::vector<T>.end() refers to savedSounds[n+1] (where n is vector.size()) which doesn't exist
-            sounds.push_back(*it);
-        }
+        if (ui->soundWavesOpened->selectedItems().size()!=0) {
+            sounds.reserve(ui->soundWavesOpened->selectedItems().size());
+            for (auto element:ui->soundWavesOpened->selectedItems()) {
+                filesToExport.append(element->text());
+                QVector<Sound>::iterator it = std::find_if(savedSounds.begin(),savedSounds.end(),[element] (Sound val) {
+                    return val.name == element->text().toStdString();
+                });
+                Q_ASSERT(it!=savedSounds.end()); //std::vector<T>.end() refers to savedSounds[n+1] (where n is vector.size()) which doesn't exist
+                sounds.push_back(*it);
+            }
 
-    } else {
-        sounds.reserve(savedSounds.size());
-        for(int i = 0; i < ui->soundWavesOpened->count(); ++i)
-        {
-            QListWidgetItem* item = ui->soundWavesOpened->item(i);
-            filesToExport.append(item->text());
-        }
-        sounds = *(new std::vector<Sound>(savedSounds.begin(),savedSounds.end()));
-    }
-    QString dirExport = QFileDialog::getExistingDirectory(this);
-
-    QProgressDialog progress(this);
-    progress.setLabelText("Exporting...");
-    progress.setMinimum(0);
-    progress.setMaximum(sounds.size());
-
-    for (auto iterator = sounds.begin();iterator !=sounds.end();iterator++) {
-        Sound sound = *iterator;
-        QBuffer data;
-        data.open(QIODevice::ReadWrite);
-        if (sound.streamed) {
-            //the file is streamed. Search for coresponding wem file and copy it to memory.
-            QFile file(QString::fromStdString(path)+"/"+QString::fromStdString(sound.id)+".wem");
-            file.open(QIODevice::ReadOnly);
-            data.write(file.readAll());
-            data.seek(0);
-            file.close();
         } else {
-            //the file is not streamed. Search this wem from bank.
-            MediaID id = std::stoul(sound.id);
-            for (auto i = media.begin();i !=media.end();i++) {
-                auto mediaHead = *i;
-                if (mediaHead.id==id) {
-                    //found one.
-                    data.write(&datachunk[mediaHead.uOffset],mediaHead.uSize);
-                    data.seek(0);
-                }
-            }
-        }
-        //Wem file is in memory. Sanity checks.
-        QDataStream dataStr(&data);
-        int testVar;
-        dataStr >> testVar; //RIFF id
-        if (testVar!=RIFFChunkId) {
-            qWarning() << "This is not a wem file." ;
-            qWarning() << "Reason: cannot find RIFF chunk";
-            continue;
-        }
-        dataStr >> testVar; //size of WAVE chunk
-        dataStr >> testVar; //WAVE id
-        if (testVar!=WAVEChunkId) {
-
-            qWarning() << "This is not a wem file.";
-            qWarning() << "Reason: cannot find WAVE chunk";
-            continue;
-        }
-        ChunkHeader header;
-        dataStr >> header;
-        if (header.ChunkId!=fmtChunkId) {
-
-            qWarning() << "This is not a wem file." ;
-            qWarning() << "Reason: cannot find format chunk";
-            continue;
-        }
-        WaveFormatExtensible format;
-        dataStr >> format;
-        //now determine the exported format.
-        QString ext;
-        if (format.wFormatTag==2||format.wFormatTag==0xFFFE) {
-            if (header.dwChunkSize != sizeof(WaveFormatExtensible)) {
-                qWarning() << "Cannot export to .wav file";
-                qWarning() << "Reason: format chunk size mismatch";
-                qWarning() << "Expected:" << sizeof(WaveFormatExtensible)<<"B";
-                qWarning() << "Got:" << header.dwChunkSize << "B";
-                continue;
-            }
-            ext = ".wav";
-        } else if (format.wFormatTag==0xFFFF) {
-            if (header.dwChunkSize != sizeof(WaveFormatExtensible)+sizeof(VorbisHeader)) {
-                qWarning() << "Cannot export to .ogg file";
-                qWarning() << "Reason: format chunk size mismatch";
-                qWarning() << "Expected:" << sizeof(WaveFormatExtensible)+sizeof(VorbisHeader)<<"B";
-                qWarning() << "Got:" << header.dwChunkSize << "B";
-                continue;
-            }
-            ext = ".ogg";
-        }
-        //determine the filename
-        QFile outFile(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"+QString::fromStdString(sound.name)+ext);
-        QDir dir;
-        if (!dir.exists(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"))
-            dir.mkpath(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"); // You can check the success if needed
-        //now to actually save the file
-
-        outFile.open(QIODevice::WriteOnly);
-
-        if (format.wFormatTag==2) {
-            format.wFormatTag = 0x11;
-            format.wSamplesPerBlock = (format.nBlockAlign - 4 * format.nChannels) * 8 / (format.wBitsPerSample * format.nChannels) + 1;
-            QBuffer dataChunk;
-            //iterating through chunks until we find the data one.
-            while (!data.atEnd()) {
-                ChunkHeader header;
-                dataStr >> header;
-                if (header.ChunkId==dataChunkId) {
-                    dataChunk.write(data.data(),header.dwChunkSize);
-                }
-                    data.seek(data.pos()+header.dwChunkSize);
-
-            }
-            if (dataChunk.size()==0) {
-                continue;
-            }
-            QDataStream fileStream(&outFile);
-            //write the wav file
-            //Riff chunk
-            header.ChunkId = RIFFChunkId;
-            header.dwChunkSize = sizeof(Fourcc) + sizeof(ChunkHeader) + sizeof(WaveFormatExtensible) + sizeof(ChunkHeader) + dataChunk.size();
-            fileStream << header;
-            outFile.flush();
-            //fwrite(&header, sizeof(header), 1, outfile);
-            //WAVE chunk
-            fileStream << WAVEChunkId;
-            outFile.flush();
-            //fwrite(&fcc, sizeof(fcc), 1, outfile);
-            //fmt chunk
-            header.ChunkId = fmtChunkId;
-            header.dwChunkSize = sizeof(WaveFormatExtensible);
-            fileStream << header;
-            fileStream << format;
-            outFile.flush();
-            //fwrite(&header, sizeof(header), 1, outfile);
-            //fwrite(&format, sizeof(format), 1, outfile);
-            //data chnuk
-            header.ChunkId = dataChunkId;
-            header.dwChunkSize = dataChunk.size();
-            fileStream << header;
-            outFile.flush();
-            //fwrite(&header, sizeof(header), 1, outfile);
-            if (format.nChannels > 1) {
-                //512 was originally BUFSIZ. Check if it works with bigger buffers first.
-                //linux's BUFSIZ is 1024
-                QByteArray transformIn(nullptr,512),transformOut(nullptr,512);
-                size_t transformCount = 512/format.nBlockAlign;
-                if (format.nBlockAlign>512) {
-                    transformIn = *(new QByteArray(nullptr,format.nBlockAlign));
-                    transformOut = *(new QByteArray(nullptr,format.nBlockAlign));
-                    transformCount =1;
-                }
-
-                for (size_t blockCount=0;blockCount* (size_t)format.nBlockAlign<dataChunk.size();) {
-                    size_t sz = format.nBlockAlign*transformCount;
-                    if (dataChunk.size()<dataChunk.pos()+sz) {
-                        sz = dataChunk.size() - dataChunk.pos();
-                    }
-                    transformIn.insert(sz,dataChunk.buffer());
-                    dataChunk.seek(dataChunk.pos()+sz);
-                    size_t blockAmount = sz / format.nBlockAlign;
-                    blockCount += blockAmount;
-                    for (size_t block = 0; block < blockAmount; block++)
-                    {
-                        for (size_t n = 0; n < format.nBlockAlign / (format.nChannels * 4u); n++)
-                        {
-                            for (size_t s = 0; s < format.nChannels; s++)
-                            {
-                                //reinterpret_cast<uint32_t *>(transformOut + block * format.nBlockAlign)[n * format.nChannels + s] =
-                                //reinterpret_cast<uint32_t *>(transformIn + block * format.nBlockAlign)[s * format.nBlockAlign / (format.nChannels * 4) + n];
-                                transformOut[(uint)((block*format.nBlockAlign)+(n*format.nChannels)+s)] =
-                                        transformIn[(uint)((s * format.nBlockAlign) / (format.nChannels * 4) + n)];
-                            }
-                        }
-                        outFile.write(transformOut,(size_t)format.nBlockAlign*blockAmount);
-                        outFile.flush();
-                    }
-
-                }
-            } else {
-                outFile.write(dataChunk.data(),dataChunk.size());
-                outFile.flush();
-            }
-        } else if (format.wFormatTag==0xFFFE) {
-            format.wFormatTag = 0x1;
-            QBuffer dataChunk;
-            //iterating through chunks until we find the data one.
-            while (!data.atEnd()) {
-                ChunkHeader header;
-                dataStr >> header;
-                if (header.ChunkId==dataChunkId) {
-                    dataChunk.write(data.data(),header.dwChunkSize);
-                }
-                    data.seek(data.pos()+header.dwChunkSize);
-
-            }
-            if (dataChunk.size()==0) {
-                continue;
-            }
-            QDataStream fileStream(&outFile);
-            //write the wav file
-            //Riff chunk
-            header.ChunkId = RIFFChunkId;
-            header.dwChunkSize = sizeof(Fourcc) + sizeof(ChunkHeader) + sizeof(WaveFormatExtensible) + sizeof(ChunkHeader) + dataChunk.size();
-            fileStream << header;
-            outFile.flush();
-            //fwrite(&header, sizeof(header), 1, outfile);
-            //WAVE chunk
-            fileStream << WAVEChunkId;
-            outFile.flush();
-            //fwrite(&fcc, sizeof(fcc), 1, outfile);
-            //fmt chunk
-            header.ChunkId = fmtChunkId;
-            header.dwChunkSize = sizeof(WaveFormatExtensible);
-            fileStream << header;
-            fileStream << format;
-            outFile.flush();
-            //fwrite(&header, sizeof(header), 1, outfile);
-            //fwrite(&format, sizeof(format), 1, outfile);
-            //data chnuk
-            header.ChunkId = dataChunkId;
-            header.dwChunkSize = dataChunk.size();
-            fileStream << header;
-            outFile.flush();
-
-            //just write the whole data chunk
-            outFile.write(dataChunk.buffer(),dataChunk.size());
-            outFile.flush();
-        } else if (format.wFormatTag=0xFFFF) {
-            //that is actually OGG vorbis file
-            //header is not parsed since it's bogus
-            //do extract data though
-            char *fn = tmpnam(nullptr);
-            FILE *outfile = fopen(fn, "wb");
-            fwrite(data.buffer(), sizeof(data.buffer()[0]), data.size(), outfile);
-            fclose(outfile);
+            sounds.reserve(savedSounds.size());
+            for(int i = 0; i < ui->soundWavesOpened->count(); ++i)
             {
-                Wwise_RIFF_Vorbis ww(fn);
-                ofstream out(outFile.fileName().toStdString(), ios::binary);
-                ww.generate_ogg(out);
+                QListWidgetItem* item = ui->soundWavesOpened->item(i);
+                filesToExport.append(item->text());
             }
-            #ifdef _WIN32
-                _unlink(fn);
-            #else 
-                unlink(fn);
-            #endif
-            revorb(outFile.fileName().toStdString().c_str());
-            return;
+            sounds = *(new std::vector<Sound>(savedSounds.begin(),savedSounds.end()));
         }
+        QString dirExport = QFileDialog::getExistingDirectory(this);
 
+        QProgressDialog progress(this);
+        progress.setLabelText("Exporting...");
+        progress.setMinimum(0);
+        progress.setMaximum(sounds.size());
 
-        data.close();
-        outFile.close();
+        for (auto iterator = sounds.begin();iterator !=sounds.end();iterator++) {
+            Sound sound = *iterator;
+            char *outdata = nullptr;
+            long size = 0;
+            if (sound.streamed)
+            {
+                std::string infname = path;
+                infname += '\\';
+                infname += sound.id;
+                infname += ".wem";
+                FILE *infile = fopen(infname.c_str(), "rb");
+                fseek(infile, 0, SEEK_END);
+                size = ftell(infile);
+                fseek(infile, 0, SEEK_SET);
+                outdata = new char[size];
+                fread(outdata, sizeof(outdata[0]), size, infile);
+                fclose(infile);
+            }
+            else
+            {
+                MediaID id = stoul(sound.id);
+                for (unsigned int i = 0; i < media.size(); i++)
+                {
+                    if (media[i].id == id)
+                    {
+                        size = media[i].uSize;
+                        outdata = new char[size];
+                        memcpy(outdata, &datachunk[media[i].uOffset], size);
+                        break;
+                    }
+                }
+            }
+            char *ptr = outdata;
+            if (*reinterpret_cast<Fourcc *>(ptr) != RIFFChunkId)
+            {
+                delete[] outdata;
+                //return true;
+            }
+            ptr += sizeof(Fourcc);
+            ptr += sizeof(UInt32);
+            if (*reinterpret_cast<Fourcc *>(ptr) != WAVEChunkId)
+            {
+                delete[] outdata;
+                //return true;
+            }
+            ptr += sizeof(Fourcc);
+            ChunkHeader header = *reinterpret_cast<ChunkHeader *>(ptr);
+            if (header.ChunkId != fmtChunkId)
+            {
+                delete[] outdata;
+                //return true;
+            }
+            ptr += sizeof(ChunkHeader);
+            WaveFormatExtensible format = *reinterpret_cast<WaveFormatExtensible *>(ptr);
+            ptr += sizeof(WaveFormatExtensible);
+            std::string ext;
+            if (format.wFormatTag == 2)
+            {
+                if (header.dwChunkSize != sizeof(WaveFormatExtensible))
+                {
+                    delete[] outdata;
+                    //return true;
+                }
+                ext = ".wav";
+            }
+            else if (format.wFormatTag == 0xFFFE)
+            {
+                if (header.dwChunkSize != sizeof(WaveFormatExtensible))
+                {
+                    delete[] outdata;
+                    //return true;
+                }
+                ext = ".wav";
+            }
+            else if (format.wFormatTag == 0xFFFF)
+            {
+                if (header.dwChunkSize != sizeof(WaveFormatExtensible) + sizeof(VorbisHeader))
+                {
+                    delete[] outdata;
+                    //return true;
+                }
+                ext = ".ogg";
+            }
+            //if (GetSaveFileName(&of))
+            QFileInfo outFile(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"+QString::fromStdString(sound.name)+QString::fromStdString(ext));
+                    QDir dir;
+                    if (!dir.exists(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"))
+                        dir.mkpath(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"); // You can check the success if needed
 
+                    QString qstring = outFile.filePath();
+                    std::string std_string = qstring.toStdString();
+                    const char* lBuf = std_string.c_str();
+                    {
+                if (format.wFormatTag == 2)
+                {
+                    format.wFormatTag = 0x11;
+                    format.wSamplesPerBlock = (format.nBlockAlign - 4 * format.nChannels) * 8 / (format.wBitsPerSample * format.nChannels) + 1;
+                    char *datapos = nullptr;
+                    UInt32 datasize = 0;
+                    while (ptr < outdata + size)
+                    {
+                        header = *reinterpret_cast<ChunkHeader *>(ptr);
+                        ptr += sizeof(ChunkHeader);
+                        if (header.ChunkId == dataChunkId)
+                        {
+                            datapos = ptr;
+                            datasize = header.dwChunkSize;
+                        }
+                        ptr += header.dwChunkSize;
+                    }
+                    if (!datapos || !datasize)
+                    {
+                        delete[] outdata;
+                        //return true;
+                    }
+                    FILE *outfile = fopen(lBuf, "wb");
+                    header.ChunkId = RIFFChunkId;
+                    header.dwChunkSize = sizeof(Fourcc) + sizeof(ChunkHeader) + sizeof(WaveFormatExtensible) + sizeof(ChunkHeader) + datasize;
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    Fourcc fcc = WAVEChunkId;
+                    fwrite(&fcc, sizeof(fcc), 1, outfile);
+                    header.ChunkId = fmtChunkId;
+                    header.dwChunkSize = sizeof(WaveFormatExtensible);
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    fwrite(&format, sizeof(format), 1, outfile);
+                    header.ChunkId = dataChunkId;
+                    header.dwChunkSize = datasize;
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    if (format.nChannels > 1)
+                    {
+                        ptr = datapos;
+                        static uint8_t transformInData[BUFSIZ], transformOutData[BUFSIZ];
+                        uint8_t *transformIn = transformInData,
+                            *transformOut = transformOutData;
+                        size_t transformCount = BUFSIZ / format.nBlockAlign;
+                        if (format.nBlockAlign > BUFSIZ)
+                        {
+                            transformIn = new uint8_t[2 * format.nBlockAlign];
+                            transformOut = transformIn + format.nBlockAlign;
+                            transformCount = 1;
+                        }
+                        for (size_t blockCount = 0; blockCount * format.nBlockAlign < datasize;)
+                        {
+                            size_t sz = format.nBlockAlign * transformCount;
+                            if (datapos + datasize < ptr + sz)
+                            {
+                                sz = datapos + datasize - ptr;
+                            }
+                            memcpy(transformIn, ptr, sz);
+                            ptr += sz;
+                            size_t blockAmount = sz / format.nBlockAlign;
+                            blockCount += blockAmount;
+                            for (size_t block = 0; block < blockAmount; block++)
+                            {
+                                for (size_t n = 0; n < format.nBlockAlign / (format.nChannels * 4u); n++)
+                                {
+                                    for (size_t s = 0; s < format.nChannels; s++)
+                                    {
+                                        reinterpret_cast<uint32_t *>(transformOut + block * format.nBlockAlign)[n * format.nChannels + s] = reinterpret_cast<uint32_t *>(transformIn + block * format.nBlockAlign)[s * format.nBlockAlign / (format.nChannels * 4) + n];
+                                    }
+                                }
+                            }
+                            fwrite(transformOut, format.nBlockAlign, blockAmount, outfile);
+                        }
+                        if (format.nBlockAlign > BUFSIZ)
+                        {
+                            delete[] transformIn;
+                        }
+                    }
+                    else
+                    {
+                        fwrite(datapos, 1, datasize, outfile);
+                    }
+                    fclose(outfile);
+                    delete[] outdata;
+                    //return true;
+                }
+                else if (format.wFormatTag == 0xFFFE)
+                {
+                    format.wFormatTag = 0x1;
+                    char *datapos = nullptr;
+                    UInt32 datasize = 0;
+                    while (ptr < outdata + size)
+                    {
+                        header = *reinterpret_cast<ChunkHeader *>(ptr);
+                        ptr += sizeof(ChunkHeader);
+                        if (header.ChunkId == dataChunkId)
+                        {
+                            datapos = ptr;
+                            datasize = header.dwChunkSize;
+                        }
+                        ptr += header.dwChunkSize;
+                    }
+                    if (!datapos || !datasize)
+                    {
+                        delete[] outdata;
+                        //return true;
+                    }
+                    FILE *outfile = fopen(lBuf, "wb");
+                    header.ChunkId = RIFFChunkId;
+                    header.dwChunkSize = sizeof(Fourcc) + sizeof(ChunkHeader) + sizeof(WaveFormatExtensible) + sizeof(ChunkHeader) + datasize;
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    Fourcc fcc = WAVEChunkId;
+                    fwrite(&fcc, sizeof(fcc), 1, outfile);
+                    header.ChunkId = fmtChunkId;
+                    header.dwChunkSize = sizeof(WaveFormatExtensible);
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    fwrite(&format, sizeof(format), 1, outfile);
+                    header.ChunkId = dataChunkId;
+                    header.dwChunkSize = datasize;
+                    fwrite(&header, sizeof(header), 1, outfile);
+                    fwrite(datapos, 1, datasize, outfile);
+                    fclose(outfile);
+                    delete[] outdata;
+                    //return true;
+                }
+                else if (format.wFormatTag == 0xFFFF)
+                {
+                    if (size && outdata)
+                    {
+                        char *fn = tmpnam(nullptr);
+                        FILE *outfile = fopen(fn, "wb");
+                        fwrite(outdata, sizeof(outdata[0]), size, outfile);
+                        fclose(outfile);
+                        {
+                            Wwise_RIFF_Vorbis ww(fn);
+                            ofstream out(lBuf, ios::binary);
+                            ww.generate_ogg(out);
+                        }
+                        _unlink(fn);
+                        revorb(lBuf);
+                        delete[] outdata;
+                        //return true;
+                    }
+                }
+            }
 
-
-        progress.setValue(progress.value()+1);
-    }
-
+        }
 
 }
