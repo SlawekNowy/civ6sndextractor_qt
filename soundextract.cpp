@@ -155,30 +155,38 @@ void MainWindow::on_openButton_clicked()
         }
         bool found = false;
 
-            xml = xml->FirstChildElement("ReferencedStreamedFiles");
-            if (xml)
-            {
-                ParseFiles(xml, true);
-                sounds.erase(std::remove_if(sounds.begin(), sounds.end(), [](const Sound & s)
+            if (xml->FirstChildElement("ReferencedStreamedFiles")) {
+                xml = xml->FirstChildElement("ReferencedStreamedFiles");
+                if (xml)
                 {
-                    std::string fname = path;
-                    fname += L'/';
-                    fname += s.id;
-                    fname += ".wem";
-                    QFileInfo wemFile(QString::fromStdString(fname));
-                    return !wemFile.exists();
+                    ParseFiles(xml, true);
+                    sounds.erase(std::remove_if(sounds.begin(), sounds.end(), [](const Sound & s)
+                    {
+                        std::string fname = path;
+                        fname += L'/';
+                        fname += s.id;
+                        fname += ".wem";
+                        QFileInfo wemFile(QString::fromStdString(fname));
+                        return !wemFile.exists();
+                    }
+                    ), sounds.end());
+                    found = true;
+
+                xml=xml->Parent();
+            }
+
+
+
+            if (xml->FirstChildElement("IncludedMemoryFiles")) {
+                xml = xml->FirstChildElement("IncludedMemoryFiles");
+                if (xml)
+                {
+                    ParseFiles(xml, false);
+                    found = true;
                 }
-                ), sounds.end());
-                found = true;
+                xml = xml->Parent();
             }
 
-
-            xml = xml->FirstChildElement("IncludedMemoryFiles");
-            if (xml)
-            {
-                ParseFiles(xml, false);
-                found = true;
-            }
 
 
         std::sort(sounds.begin(), sounds.end(), [](Sound s1, Sound s2)
@@ -206,6 +214,7 @@ void MainWindow::on_openButton_clicked()
             //just making these a bit faster.
         }
     }
+}
 }
 
 void MainWindow::on_extractButton_clicked()
