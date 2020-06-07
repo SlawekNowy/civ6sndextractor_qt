@@ -72,6 +72,11 @@ void LoadBank(std::string fname)
     fclose(f);
 }
 
+void unloadBank() {
+    delete[] datachunk;
+    media.clear();
+    media.shrink_to_fit();
+}
 void ParseFiles(tinyxml2::XMLNode *xml, bool streamed)
 {
     for (xml = xml->FirstChildElement("File");xml;xml = xml->NextSiblingElement("File"))
@@ -196,26 +201,42 @@ void MainWindow::on_openButton_clicked()
         if (!found) return;
         QStringList addedWaves;
 
-        for (auto sound:sounds) {
+        for (auto iterator = sounds.begin();iterator !=sounds.end();iterator++) {
+            Sound sound = *iterator;
             sound.bankPath = relFileBank.absoluteFilePath().toStdString();
             addedWaves.append(QString::fromStdString(sound.name));
+            *iterator = sound;
         }
+        std::sort(addedWaves.begin(), addedWaves.end(), [](QString s1, QString s2)
+        {
+            return s1 < s2;
+        });
         if (addedWaves.size()>0) {
             ui->soundWavesOpened->addItems(addedWaves);
-
-            savedSounds =*(new QVector<Sound>(sounds.begin(),sounds.end()));
+\
+            savedSounds.append(QVector(sounds.begin(),sounds.end()));
             std::sort(savedSounds.begin(), savedSounds.end(), [](Sound s1, Sound s2)
             {
                 return s1.name < s2.name;
             });
             sounds.clear();
             sounds.shrink_to_fit();
-            LoadBank(relFileBank.absoluteFilePath().toStdString());
+            //LoadBank(relFileBank.absoluteFilePath().toStdString());
             //just making these a bit faster.
         }
     }
 }
 }
+
+struct ExportSorter {
+  bool operator() (const Sound& lhs, const Sound& rhs) const {
+    if (lhs.bankPath != rhs.bankPath) {
+      return lhs.bankPath < rhs.bankPath;
+    } else {
+      return lhs.name < rhs.name;
+    }
+  }
+};
 
 void MainWindow::on_extractButton_clicked()
 {
@@ -245,15 +266,26 @@ void MainWindow::on_extractButton_clicked()
         }
         QString dirExport = QFileDialog::getExistingDirectory(this);
 
+        //before we can start this, group those per every bank. We don't want banks be loaded more than once
+        std::sort(sounds.begin(),sounds.end(),ExportSorter());
+
+
         QProgressDialog progress(this);
         progress.setLabelText("Exporting...");
         progress.setMinimum(0);
         progress.setMaximum(sounds.size());
+        QString bankLoaded = "";
 
         for (auto iterator = sounds.begin();iterator !=sounds.end();iterator++) {
             Sound sound = *iterator;
             char *outdata = nullptr;
             long size = 0;
+            //swap banks if not needed.
+            if (bankLoaded.toStdString() != sound.bankPath) {
+                unloadBank();
+                LoadBank(sound.bankPath);
+                bankLoaded = QString::fromStdString(sound.bankPath);
+            }
             if (sound.streamed)
             {
                 std::string infname = path;
@@ -334,6 +366,10 @@ void MainWindow::on_extractButton_clicked()
                 ext = ".ogg";
             }
             //if (GetSaveFileName(&of))
+            if(sound.relativePath =="SFX") {
+                QFileInfo file(QString::fromStdString(sound.bankPath));
+                sound.relativePath += "/"+file.baseName().toStdString();
+            }
             QFileInfo outFile(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"+QString::fromStdString(sound.name)+QString::fromStdString(ext));
                     QDir dir;
                     if (!dir.exists(dirExport+"/"+QString::fromStdString(sound.relativePath)+"/"))
@@ -488,5 +524,5 @@ void MainWindow::on_extractButton_clicked()
             }
 
         }
-
+        unloadBank();
 }
